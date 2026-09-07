@@ -1,73 +1,317 @@
-/* ========================================================= AI MARKET ANALYZER config.js ========================================================= */
+/* =========================================================
+   AI ANALYSES — config.js
+   ========================================================= */
 
 "use strict";
 
-/* |--------------------------------------------------------------------------
-API CONFIGURATION
-| | IMPORTANT: | Never put a private/secret API key in frontend JavaScript. | 
-| Anything inside config.js can be viewed by website visitors. | 
-| For now, keep the key empty. | Later, connect your secure backend/API proxy here. | */
+/*
+|--------------------------------------------------------------------------
+| APPLICATION CONFIGURATION
+|--------------------------------------------------------------------------
+|
+| IMPORTANT:
+| Never put private API keys in this file.
+|
+| Anything inside config.js can be viewed by website visitors.
+| Keep OpenAI, xAI and Gemini API keys on the backend/server.
+|
+|--------------------------------------------------------------------------
+*/
 
 const CONFIG = {
 
-APP_NAME: "AI Market Analyzer",
+  /* =======================================================
+     APP INFORMATION
+     ======================================================= */
 
-VERSION: "1.0.0",
+  APP_NAME: "AI Analyses",
 
-/* |----------------------------------------------------------
-Analysis Settings
-*/
+  VERSION: "1.0.0",
 
-analysis: {
-maxAnalysisTime: 10000,    autoStartAfterUpload: true,    supportedImageTypes: [     "image/jpeg",     "image/png",     "image/webp",     "image/jpg"   ],    maxImageSizeMB: 10   
-},
+  DESCRIPTION:
+    "AI-powered chart analysis, OTC analysis and future market signals.",
 
-/* |----------------------------------------------------------
-AI API
-*/
 
-api: {
-enabled: false,    /*     DO NOT put a private API key here.      Example only:      apiKey: "f7569aaaff8c45b79dcc286bd1d5fec2"      The key you provided should NOT be exposed     in browser-side JavaScript.   */    apiKey: "",    endpoint: "",    model: "",    timeout: 9000   
-},
+  /* =======================================================
+     API CONFIGURATION
+     ======================================================= */
 
-/* |----------------------------------------------------------
-Future Signals
-*/
+  /*
+   * Leave this empty when frontend and backend
+   * are hosted on the same domain.
+   *
+   * Example:
+   * API_BASE: ""
+   *
+   * If your backend is hosted separately:
+   * API_BASE: "https://your-api-domain.com"
+   */
 
-futureSignals: {
-count: 10,    markets: [      "EUR/USD",     "GBP/USD",     "USD/JPY",     "USD/CHF",     "AUD/USD",     "USD/CAD",     "NZD/USD",     "EUR/GBP",     "EUR/JPY",     "GBP/JPY",     "AUD/JPY",     "EUR/AUD",     "EUR/CAD",     "GBP/CAD",     "AUD/CAD",     "USD/SGD",     "USD/HKD",     "USD/TRY",     "USD/MXN",     "USD/ZAR"    ]   
-},
+  API_BASE: "",
 
-/* |----------------------------------------------------------
-UI
-*/
 
-ui: {
-toastDuration: 3500,    pageAnimation: true,    signalAnimation: true,    loadingAnimation: true   
-}
+  /* =======================================================
+     ANALYSIS SETTINGS
+     ======================================================= */
+
+  ANALYSIS: {
+
+    /*
+     * Maximum image size accepted by frontend.
+     * 10 MB
+     */
+
+    MAX_IMAGE_SIZE_MB: 10,
+
+    /*
+     * Supported chart image formats.
+     */
+
+    SUPPORTED_IMAGE_TYPES: [
+      "image/png",
+      "image/jpeg",
+      "image/webp"
+    ],
+
+    /*
+     * Default timeframe.
+     */
+
+    DEFAULT_TIMEFRAME: "5m",
+
+    /*
+     * Confidence is an estimate, not a guarantee.
+     */
+
+    SHOW_CONFIDENCE: true,
+
+    /*
+     * Use multi-AI voting.
+     */
+
+    MULTI_AI_VOTING: true
+
+  },
+
+
+  /* =======================================================
+     FUTURE SIGNAL MARKETS
+     ======================================================= */
+
+  FUTURE_SIGNALS: {
+
+    MARKETS: [
+
+      {
+        symbol: "EUR/USD",
+        name: "EUR/USD"
+      },
+
+      {
+        symbol: "GBP/USD",
+        name: "GBP/USD"
+      },
+
+      {
+        symbol: "USD/JPY",
+        name: "USD/JPY"
+      },
+
+      {
+        symbol: "USD/CHF",
+        name: "USD/CHF"
+      },
+
+      {
+        symbol: "AUD/USD",
+        name: "AUD/USD"
+      },
+
+      {
+        symbol: "USD/CAD",
+        name: "USD/CAD"
+      },
+
+      {
+        symbol: "NZD/USD",
+        name: "NZD/USD"
+      },
+
+      {
+        symbol: "EUR/GBP",
+        name: "EUR/GBP"
+      },
+
+      {
+        symbol: "EUR/JPY",
+        name: "EUR/JPY"
+      },
+
+      {
+        symbol: "GBP/JPY",
+        name: "GBP/JPY"
+      },
+
+      {
+        symbol: "XAU/USD",
+        name: "Gold / XAU/USD"
+      },
+
+      {
+        symbol: "BTC/USD",
+        name: "Bitcoin / BTC/USD"
+      }
+
+    ],
+
+
+    TIMEFRAMES: [
+
+      {
+        value: "1m",
+        label: "1 Minute"
+      },
+
+      {
+        value: "5m",
+        label: "5 Minutes"
+      },
+
+      {
+        value: "15m",
+        label: "15 Minutes"
+      },
+
+      {
+        value: "30m",
+        label: "30 Minutes"
+      },
+
+      {
+        value: "1h",
+        label: "1 Hour"
+      }
+
+    ]
+
+  },
+
+
+  /* =======================================================
+     AI PROVIDERS
+     ======================================================= */
+
+  AI_PROVIDERS: {
+
+    OPENAI: {
+
+      name: "OpenAI",
+
+      label: "ChatGPT",
+
+      enabled: true
+
+    },
+
+
+    XAI: {
+
+      name: "xAI",
+
+      label: "Grok",
+
+      enabled: true
+
+    },
+
+
+    GEMINI: {
+
+      name: "Google",
+
+      label: "Gemini",
+
+      enabled: true
+
+    }
+
+  },
+
+
+  /* =======================================================
+     VOTING SYSTEM
+     ======================================================= */
+
+  VOTING: {
+
+    /*
+     * Minimum AI votes required for a consensus.
+     */
+
+    MINIMUM_VOTES: 2,
+
+    /*
+     * If 2 or more AIs say UP:
+     * Final signal = UP
+     *
+     * If 2 or more AIs say DOWN:
+     * Final signal = DOWN
+     *
+     * Otherwise:
+     * Final signal = NEUTRAL / WAITING
+     */
+
+    UP_SIGNAL: "UP",
+
+    DOWN_SIGNAL: "DOWN",
+
+    NEUTRAL_SIGNAL: "NEUTRAL"
+
+  },
+
+
+  /* =======================================================
+     UI SETTINGS
+     ======================================================= */
+
+  UI: {
+
+    THEME: "dark",
+
+    ANIMATION: true,
+
+    SHOW_AI_VOTES: true,
+
+    SHOW_RISK_NOTICE: true,
+
+    SHOW_INSTALL_BUTTON: true,
+
+    AUTO_SCROLL_RESULT: true
+
+  },
+
+
+  /* =======================================================
+     PWA
+     ======================================================= */
+
+  PWA: {
+
+    ENABLED: true,
+
+    MANIFEST:
+      "manifest.webmanifest",
+
+    SERVICE_WORKER:
+      "sw.js"
+
+  }
 
 };
 
-/* |--------------------------------------------------------------------------
-Freeze Configuration
-| | Prevent accidental modification from other scripts. | */
 
-Object.freeze(CONFIG);
+/* =========================================================
+   MAKE CONFIG AVAILABLE
+   ========================================================= */
 
-Object.freeze(CONFIG.analysis); Object.freeze(CONFIG.api); Object.freeze(CONFIG.futureSignals); Object.freeze(CONFIG.ui);
-
-/* |--------------------------------------------------------------------------
-Global Access
-*/
-
-window.MARKET_ANALYZER_CONFIG = CONFIG;
-
-/* |--------------------------------------------------------------------------
-Debug Information
-*/
-
-console.log( "%c AI Market Analyzer Config Loaded ", "background:#071321;color:#00e5ff;font-weight:bold;padding:7px;" );
-
-console.log( "Version:", CONFIG.VERSION );
-
-console.log( "AI API:", CONFIG.api.enabled ? "Enabled" : "Frontend Demo Mode" );
+window.CONFIG = CONFIG;
