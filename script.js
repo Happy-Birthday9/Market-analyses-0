@@ -1,1826 +1,1413 @@
-/* =========================================================
-   AI ANALYSES — script.js
-   ========================================================= */
-
 "use strict";
 
 /* =========================================================
-   GLOBAL VARIABLES
-   ========================================================= */
+   GLOBAL SETTINGS
+========================================================= */
 
-let deferredInstallPrompt = null;
+const CONFIG = window.MARKET_ANALYZER_CONFIG || {};
 
-let realImageBase64 = null;
-let otcImageBase64 = null;
+const APP = {
+  analysisDuration:
+    Number(CONFIG.analysis?.maxAnalysisTime) || 6500,
 
+  maxFileSize:
+    (Number(CONFIG.analysis?.maxImageSizeMB) || 10) * 1024 * 1024,
+
+  allowedImageTypes:
+    CONFIG.analysis?.supportedImageTypes || [
+      "image/jpeg",
+      "image/png",
+      "image/webp",
+      "image/jpg"
+    ]
+};
 
 /* =========================================================
    DOM HELPERS
-   ========================================================= */
+========================================================= */
 
 const $ = (selector) => document.querySelector(selector);
 
-const $$ = (selector) => document.querySelectorAll(selector);
-
+const $$ = (selector) =>
+  document.querySelectorAll(selector);
 
 /* =========================================================
-   ELEMENTS
-   ========================================================= */
+   DOM ELEMENTS
+========================================================= */
 
-// Menu
-const menuBtn = $("#menuBtn");
-const closeMenuBtn = $("#closeMenuBtn");
+const appLoader = $("#appLoader");
+
+const menuButton = $("#menuButton");
 const sideMenu = $("#sideMenu");
+const closeMenu = $("#closeMenu");
 const menuOverlay = $("#menuOverlay");
 
-// Install
-const installBtn = $("#installBtn");
-
-// Sections
-const sections = {
-  dashboard: $("#dashboardSection"),
-  future: $("#futureSection"),
-  real: $("#realSection"),
-  otc: $("#otcSection"),
-  settings: $("#settingsSection")
-};
-
-// Navigation
+const pages = $$(".page");
 const menuItems = $$(".menu-item");
-const goButtons = $$("[data-go]");
+const pageTargetButtons = $$("[data-page-target]");
 
-// Future
-const marketSelect = $("#marketSelect");
-const futureTimeframe = $("#futureTimeframe");
-const futureBtn = $("#futureBtn");
-const futureLoading = $("#futureLoading");
-const futureResult = $("#futureResult");
-const futureDirection = $("#futureDirection");
-const futureConfidence = $("#futureConfidence");
-const futureReason = $("#futureReason");
-const futureVotes = $("#futureVotes");
+const toast = $("#toast");
+const toastTitle = $("#toastTitle");
+const toastMessage = $("#toastMessage");
+const toastClose = $("#toastClose");
 
-// Real Market
-const realChartInput = $("#realChartInput");
-const realUploadArea = $("#realUploadArea");
-const realPreview = $("#realPreview");
-const realPreviewImage = $("#realPreviewImage");
-const removeRealImage = $("#removeRealImage");
-const realTimeframe = $("#realTimeframe");
-const realAnalyzeBtn = $("#realAnalyzeBtn");
-const realLoading = $("#realLoading");
-const realResult = $("#realResult");
-const realDirection = $("#realDirection");
-const realConfidence = $("#realConfidence");
-const realReason = $("#realReason");
-const realVotes = $("#realVotes");
-
-// OTC
-const otcChartInput = $("#otcChartInput");
-const otcUploadArea = $("#otcUploadArea");
-const otcPreview = $("#otcPreview");
-const otcPreviewImage = $("#otcPreviewImage");
-const removeOtcImage = $("#removeOtcImage");
-const otcTimeframe = $("#otcTimeframe");
-const otcAnalyzeBtn = $("#otcAnalyzeBtn");
-const otcLoading = $("#otcLoading");
-const otcResult = $("#otcResult");
-const otcDirection = $("#otcDirection");
-const otcConfidence = $("#otcConfidence");
-const otcReason = $("#otcReason");
-const otcVotes = $("#otcVotes");
-
+const engineStatus = $("#engineStatus");
 
 /* =========================================================
-   CONFIG
-   ========================================================= */
-
-const APP_CONFIG = window.CONFIG || {};
-
-const API_BASE =
-  APP_CONFIG.API_BASE ||
-  APP_CONFIG.API_BASE_URL ||
-  "";
-
-
-/* =========================================================
-   INITIALIZATION
-   ========================================================= */
+   APP INITIALIZATION
+========================================================= */
 
 document.addEventListener("DOMContentLoaded", () => {
-
-  initializeNavigation();
-
+  initializeLoader();
   initializeMenu();
-
-  initializeInstallPrompt();
-
-  initializeImageUpload();
-
-  initializeAnalysisButtons();
-
-  registerServiceWorker();
-
+  initializeNavigation();
+  initializeRealAnalysis();
+  initializeOtcAnalysis();
+  initializeFutureSignals();
+  initializeToast();
 });
 
+/* =========================================================
+   APP LOADER
+========================================================= */
+
+function initializeLoader() {
+  window.setTimeout(() => {
+    if (!appLoader) return;
+
+    appLoader.classList.add("hide");
+
+    window.setTimeout(() => {
+      appLoader.remove();
+    }, 800);
+  }, 900);
+}
+
+/* =========================================================
+   MENU
+========================================================= */
+
+function initializeMenu() {
+  if (menuButton) {
+    menuButton.addEventListener("click", () => {
+      const isOpen =
+        sideMenu?.classList.contains("open");
+
+      if (isOpen) {
+        closeSideMenu();
+      } else {
+        openSideMenu();
+      }
+    });
+  }
+
+  if (closeMenu) {
+    closeMenu.addEventListener(
+      "click",
+      closeSideMenu
+    );
+  }
+
+  if (menuOverlay) {
+    menuOverlay.addEventListener(
+      "click",
+      closeSideMenu
+    );
+  }
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      closeSideMenu();
+    }
+  });
+}
+
+function openSideMenu() {
+  if (!sideMenu) return;
+
+  sideMenu.classList.add("open");
+
+  if (menuOverlay) {
+    menuOverlay.classList.add("show");
+  }
+
+  if (menuButton) {
+    menuButton.classList.add("active");
+    menuButton.setAttribute(
+      "aria-expanded",
+      "true"
+    );
+  }
+}
+
+function closeSideMenu() {
+  if (!sideMenu) return;
+
+  sideMenu.classList.remove("open");
+
+  if (menuOverlay) {
+    menuOverlay.classList.remove("show");
+  }
+
+  if (menuButton) {
+    menuButton.classList.remove("active");
+    menuButton.setAttribute(
+      "aria-expanded",
+      "false"
+    );
+  }
+}
 
 /* =========================================================
    NAVIGATION
-   ========================================================= */
+========================================================= */
 
 function initializeNavigation() {
-
   menuItems.forEach((item) => {
-
     item.addEventListener("click", () => {
+      const pageId = item.dataset.page;
 
-      const sectionName = item.dataset.section;
+      if (!pageId) return;
 
-      if (!sectionName) {
-        return;
-      }
-
-      showSection(sectionName);
-
-      closeMenu();
-
-    });
-
-  });
-
-
-  goButtons.forEach((button) => {
-
-    button.addEventListener("click", () => {
-
-      const sectionName = button.dataset.go;
-
-      if (!sectionName) {
-        return;
-      }
-
-      showSection(sectionName);
-
-      window.scrollTo({
-        top: 0,
-        behavior: "smooth"
+      menuItems.forEach((menuItem) => {
+        menuItem.classList.remove("active");
       });
 
-    });
+      item.classList.add("active");
 
+      showPage(pageId);
+      closeSideMenu();
+    });
   });
 
+  pageTargetButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      const pageId =
+        button.dataset.pageTarget;
+
+      if (!pageId) return;
+
+      showPage(pageId);
+      updateActiveMenu(pageId);
+    });
+  });
+
+  $$(".dashboard-card").forEach((card) => {
+    card.addEventListener("click", () => {
+      const title =
+        card.querySelector("h3");
+
+      if (!title) return;
+
+      const text =
+        title.textContent.toLowerCase();
+
+      if (text.includes("real")) {
+        showPage("realAnalysisPage");
+        updateActiveMenu(
+          "realAnalysisPage"
+        );
+      } else if (text.includes("otc")) {
+        showPage("otcAnalysisPage");
+        updateActiveMenu(
+          "otcAnalysisPage"
+        );
+      } else if (text.includes("future")) {
+        showPage("futureSignalsPage");
+        updateActiveMenu(
+          "futureSignalsPage"
+        );
+      }
+    });
+  });
 }
 
+function showPage(pageId) {
+  const targetPage =
+    document.getElementById(pageId);
 
-function showSection(sectionName) {
+  if (!targetPage) return;
 
-  Object.values(sections).forEach((section) => {
-
-    if (!section) {
-      return;
-    }
-
-    section.classList.remove("active-section");
-
+  pages.forEach((page) => {
+    page.classList.remove("active-page");
   });
 
+  targetPage.classList.remove(
+    "active-page"
+  );
 
-  if (sections[sectionName]) {
+  void targetPage.offsetWidth;
 
-    sections[sectionName].classList.add(
-      "active-section"
-    );
-
-  }
-
-
-  menuItems.forEach((item) => {
-
-    item.classList.toggle(
-      "active",
-      item.dataset.section === sectionName
-    );
-
-  });
-
+  targetPage.classList.add("active-page");
 
   window.scrollTo({
     top: 0,
     behavior: "smooth"
   });
-
 }
 
+function updateActiveMenu(pageId) {
+  menuItems.forEach((item) => {
+    item.classList.toggle(
+      "active",
+      item.dataset.page === pageId
+    );
+  });
+}
 
 /* =========================================================
-   SIDE MENU
-   ========================================================= */
+   FILE VALIDATION
+========================================================= */
 
-function initializeMenu() {
-
-  if (menuBtn) {
-
-    menuBtn.addEventListener("click", openMenu);
-
+function validateImageFile(file) {
+  if (!file) {
+    return {
+      valid: false,
+      message: "Please select an image."
+    };
   }
 
-
-  if (closeMenuBtn) {
-
-    closeMenuBtn.addEventListener("click", closeMenu);
-
+  if (!APP.allowedImageTypes.includes(file.type)) {
+    return {
+      valid: false,
+      message:
+        "Please upload JPG, PNG or WEBP image."
+    };
   }
 
+  if (file.size > APP.maxFileSize) {
+    return {
+      valid: false,
+      message:
+        "Image size must be below 10 MB."
+    };
+  }
 
-  if (menuOverlay) {
+  return {
+    valid: true
+  };
+}
 
-    menuOverlay.addEventListener(
-      "click",
-      closeMenu
+/* =========================================================
+   IMAGE PREVIEW
+========================================================= */
+
+function createImagePreview(
+  file,
+  previewBox,
+  previewImage,
+  fileNameElement
+) {
+  const validation =
+    validateImageFile(file);
+
+  if (!validation.valid) {
+    showToast(
+      "Invalid Image",
+      validation.message,
+      "error"
     );
 
+    return false;
   }
-
-
-  document.addEventListener("keydown", (event) => {
-
-    if (event.key === "Escape") {
-
-      closeMenu();
-
-    }
-
-  });
-
-}
-
-
-function openMenu() {
-
-  sideMenu?.classList.add("open");
-
-  menuOverlay?.classList.add("open");
-
-  document.body.style.overflow = "hidden";
-
-}
-
-
-function closeMenu() {
-
-  sideMenu?.classList.remove("open");
-
-  menuOverlay?.classList.remove("open");
-
-  document.body.style.overflow = "";
-
-}
-
-
-/* =========================================================
-   PWA INSTALL
-   ========================================================= */
-
-function initializeInstallPrompt() {
-
-  window.addEventListener(
-    "beforeinstallprompt",
-    (event) => {
-
-      event.preventDefault();
-
-      deferredInstallPrompt = event;
-
-      if (installBtn) {
-        installBtn.hidden = false;
-      }
-
-    }
-  );
-
-
-  installBtn?.addEventListener(
-    "click",
-    async () => {
-
-      if (!deferredInstallPrompt) {
-
-        showToast(
-          "Install option is not available yet.",
-          "info"
-        );
-
-        return;
-
-      }
-
-
-      deferredInstallPrompt.prompt();
-
-
-      try {
-
-        const result =
-          await deferredInstallPrompt.userChoice;
-
-        if (result.outcome === "accepted") {
-
-          showToast(
-            "AI Analyses installation started.",
-            "success"
-          );
-
-        }
-
-      } catch (error) {
-
-        console.error(
-          "Install prompt error:",
-          error
-        );
-
-      }
-
-
-      deferredInstallPrompt = null;
-
-      installBtn.hidden = true;
-
-    }
-  );
-
-
-  window.addEventListener(
-    "appinstalled",
-    () => {
-
-      if (installBtn) {
-        installBtn.hidden = true;
-      }
-
-      deferredInstallPrompt = null;
-
-      showToast(
-        "AI Analyses installed successfully.",
-        "success"
-      );
-
-    }
-  );
-
-}
-
-
-/* =========================================================
-   SERVICE WORKER
-   ========================================================= */
-
-function registerServiceWorker() {
 
   if (
-    "serviceWorker" in navigator &&
-    window.location.protocol !== "file:"
+    !previewBox ||
+    !previewImage ||
+    !fileNameElement
   ) {
-
-    window.addEventListener(
-      "load",
-      async () => {
-
-        try {
-
-          await navigator.serviceWorker.register(
-            "sw.js"
-          );
-
-          console.log(
-            "AI Analyses service worker registered."
-          );
-
-        } catch (error) {
-
-          console.warn(
-            "Service worker registration failed:",
-            error
-          );
-
-        }
-
-      }
-    );
-
+    return false;
   }
 
-}
+  const imageURL =
+    URL.createObjectURL(file);
 
+  previewImage.src = imageURL;
 
-/* =========================================================
-   IMAGE UPLOAD
-   ========================================================= */
+  previewBox.classList.remove("hidden");
 
-function initializeImageUpload() {
+  fileNameElement.textContent =
+    file.name;
 
-  if (realChartInput) {
-
-    realChartInput.addEventListener(
-      "change",
-      (event) => {
-
-        handleImageFile(
-          event.target.files?.[0],
-          "real"
-        );
-
-      }
-    );
-
-  }
-
-
-  if (otcChartInput) {
-
-    otcChartInput.addEventListener(
-      "change",
-      (event) => {
-
-        handleImageFile(
-          event.target.files?.[0],
-          "otc"
-        );
-
-      }
-    );
-
-  }
-
-
-  removeRealImage?.addEventListener(
-    "click",
-    () => {
-
-      clearImage("real");
-
-    }
-  );
-
-
-  removeOtcImage?.addEventListener(
-    "click",
-    () => {
-
-      clearImage("otc");
-
-    }
-  );
-
-
-  setupDragDrop(
-    realUploadArea,
-    "real"
-  );
-
-
-  setupDragDrop(
-    otcUploadArea,
-    "otc"
-  );
-
-}
-
-
-function setupDragDrop(area, type) {
-
-  if (!area) {
-    return;
-  }
-
-
-  ["dragenter", "dragover"].forEach(
-    (eventName) => {
-
-      area.addEventListener(
-        eventName,
-        (event) => {
-
-          event.preventDefault();
-
-          area.classList.add("drag-active");
-
-        }
-      );
-
-    }
-  );
-
-
-  ["dragleave", "drop"].forEach(
-    (eventName) => {
-
-      area.addEventListener(
-        eventName,
-        (event) => {
-
-          event.preventDefault();
-
-          area.classList.remove(
-            "drag-active"
-          );
-
-        }
-      );
-
-    }
-  );
-
-
-  area.addEventListener(
-    "drop",
-    (event) => {
-
-      const file =
-        event.dataTransfer?.files?.[0];
-
-      handleImageFile(file, type);
-
-    }
-  );
-
-}
-
-
-function handleImageFile(file, type) {
-
-  if (!file) {
-    return;
-  }
-
-
-  const allowedTypes = [
-    "image/png",
-    "image/jpeg",
-    "image/webp"
-  ];
-
-
-  if (!allowedTypes.includes(file.type)) {
-
-    showToast(
-      "Please upload PNG, JPG, JPEG or WEBP image.",
-      "error"
-    );
-
-    return;
-
-  }
-
-
-  const maxSize =
-    10 * 1024 * 1024;
-
-
-  if (file.size > maxSize) {
-
-    showToast(
-      "Image must be smaller than 10 MB.",
-      "error"
-    );
-
-    return;
-
-  }
-
-
-  const reader = new FileReader();
-
-
-  reader.onload = () => {
-
-    const result =
-      String(reader.result || "");
-
-
-    if (!result) {
-      return;
-    }
-
-
-    if (type === "real") {
-
-      realImageBase64 = result;
-
-      if (realPreviewImage) {
-        realPreviewImage.src = result;
-      }
-
-      if (realPreview) {
-        realPreview.hidden = false;
-      }
-
-    }
-
-
-    if (type === "otc") {
-
-      otcImageBase64 = result;
-
-      if (otcPreviewImage) {
-        otcPreviewImage.src = result;
-      }
-
-      if (otcPreview) {
-        otcPreview.hidden = false;
-      }
-
-    }
-
+  previewImage.onload = () => {
+    URL.revokeObjectURL(imageURL);
   };
 
-
-  reader.onerror = () => {
-
-    showToast(
-      "Unable to read the selected image.",
-      "error"
-    );
-
-  };
-
-
-  reader.readAsDataURL(file);
-
+  return true;
 }
-
-
-function clearImage(type) {
-
-  if (type === "real") {
-
-    realImageBase64 = null;
-
-    if (realChartInput) {
-      realChartInput.value = "";
-    }
-
-    if (realPreviewImage) {
-      realPreviewImage.src = "";
-    }
-
-    if (realPreview) {
-      realPreview.hidden = true;
-    }
-
-    if (realResult) {
-      realResult.hidden = true;
-    }
-
-  }
-
-
-  if (type === "otc") {
-
-    otcImageBase64 = null;
-
-    if (otcChartInput) {
-      otcChartInput.value = "";
-    }
-
-    if (otcPreviewImage) {
-      otcPreviewImage.src = "";
-    }
-
-    if (otcPreview) {
-      otcPreview.hidden = true;
-    }
-
-    if (otcResult) {
-      otcResult.hidden = true;
-    }
-
-  }
-
-}
-
-
-/* =========================================================
-   ANALYSIS BUTTONS
-   ========================================================= */
-
-function initializeAnalysisButtons() {
-
-  futureBtn?.addEventListener(
-    "click",
-    generateFutureSignal
-  );
-
-
-  realAnalyzeBtn?.addEventListener(
-    "click",
-    analyzeRealMarket
-  );
-
-
-  otcAnalyzeBtn?.addEventListener(
-    "click",
-    analyzeOTCMarket
-  );
-
-}
-
-
-/* =========================================================
-   FUTURE SIGNAL
-   ========================================================= */
-
-async function generateFutureSignal() {
-
-  const market =
-    marketSelect?.value?.trim();
-
-
-  const timeframe =
-    futureTimeframe?.value?.trim() ||
-    "5m";
-
-
-  if (!market) {
-
-    showToast(
-      "Please select a market first.",
-      "error"
-    );
-
-    marketSelect?.focus();
-
-    return;
-
-  }
-
-
-  setLoading(
-    futureBtn,
-    futureLoading,
-    true,
-    "Generating signal..."
-  );
-
-
-  if (futureResult) {
-    futureResult.hidden = true;
-  }
-
-
-  try {
-
-    const data = await apiRequest(
-      "/api/future",
-      {
-        method: "POST",
-
-        body: JSON.stringify({
-          market,
-          timeframe
-        })
-      }
-    );
-
-
-    renderSignalResult(
-      data,
-      {
-        result: futureResult,
-        direction: futureDirection,
-        confidence: futureConfidence,
-        reason: futureReason,
-        votes: futureVotes
-      }
-    );
-
-
-  } catch (error) {
-
-    console.error(
-      "Future signal error:",
-      error
-    );
-
-
-    showToast(
-      error.message ||
-      "Unable to generate future signal.",
-      "error"
-    );
-
-  } finally {
-
-    setLoading(
-      futureBtn,
-      futureLoading,
-      false,
-      "🔮 Generate Future Signal"
-    );
-
-  }
-
-}
-
 
 /* =========================================================
    REAL MARKET ANALYSIS
-   ========================================================= */
+========================================================= */
 
-async function analyzeRealMarket() {
+function initializeRealAnalysis() {
+  const input = $("#realChartInput");
 
-  if (!realImageBase64) {
+  const previewBox =
+    $("#realPreviewBox");
 
-    showToast(
-      "Please upload a chart screenshot first.",
-      "error"
-    );
+  const previewImage =
+    $("#realPreviewImage");
 
-    return;
+  const fileName =
+    $("#realFileName");
 
-  }
+  const removeButton =
+    $("#removeRealImage");
 
+  if (!input) return;
 
-  const timeframe =
-    realTimeframe?.value?.trim() ||
-    "5m";
+  input.addEventListener("change", () => {
+    const file = input.files[0];
 
+    if (!file) return;
 
-  setLoading(
-    realAnalyzeBtn,
-    realLoading,
-    true,
-    "Analyzing chart..."
-  );
+    const success =
+      createImagePreview(
+        file,
+        previewBox,
+        previewImage,
+        fileName
+      );
 
-
-  if (realResult) {
-    realResult.hidden = true;
-  }
-
-
-  try {
-
-    const data = await apiRequest(
-      "/api/analyze",
-      {
-        method: "POST",
-
-        body: JSON.stringify({
-          type: "real",
-          timeframe,
-          image: realImageBase64
-        })
-      }
-    );
-
-
-    renderSignalResult(
-      data,
-      {
-        result: realResult,
-        direction: realDirection,
-        confidence: realConfidence,
-        reason: realReason,
-        votes: realVotes
-      }
-    );
-
-
-  } catch (error) {
-
-    console.error(
-      "Real market analysis error:",
-      error
-    );
-
+    if (!success) {
+      input.value = "";
+      return;
+    }
 
     showToast(
-      error.message ||
-      "Unable to analyze the chart.",
-      "error"
+      "Chart Ready",
+      "Starting AI chart analysis...",
+      "success"
     );
 
-  } finally {
+    startAnalysis({
+      type: "real",
+      input,
 
-    setLoading(
-      realAnalyzeBtn,
-      realLoading,
-      false,
-      "📊 Analyze Real Market"
+      progressBox:
+        $("#realAnalysisProgress"),
+
+      progressFill:
+        $("#realProgressFill"),
+
+      percentElement:
+        $("#realAnalysisPercent"),
+
+      steps:
+        $$("#realAnalysisSteps .analysis-step"),
+
+      resultBox:
+        $("#realResultBox"),
+
+      signalElement:
+        $("#realSignal"),
+
+      signalText:
+        $("#realSignalText"),
+
+      resultTime:
+        $("#realResultTime"),
+
+      confidence:
+        $("#realConfidence"),
+
+      confidenceFill:
+        $("#realConfidenceFill"),
+
+      trend:
+        $("#realTrend"),
+
+      pattern:
+        $("#realPattern"),
+
+      momentum:
+        $("#realMomentum")
+    });
+  });
+
+  if (removeButton) {
+    removeButton.addEventListener(
+      "click",
+      () => {
+        resetAnalysis({
+          input,
+          previewBox,
+          previewImage,
+          fileName,
+
+          progressBox:
+            $("#realAnalysisProgress"),
+
+          resultBox:
+            $("#realResultBox")
+        });
+      }
     );
-
   }
-
 }
-
 
 /* =========================================================
    OTC MARKET ANALYSIS
-   ========================================================= */
+========================================================= */
 
-async function analyzeOTCMarket() {
+function initializeOtcAnalysis() {
+  const input = $("#otcChartInput");
 
-  if (!otcImageBase64) {
+  const previewBox =
+    $("#otcPreviewBox");
+
+  const previewImage =
+    $("#otcPreviewImage");
+
+  const fileName =
+    $("#otcFileName");
+
+  const removeButton =
+    $("#removeOtcImage");
+
+  if (!input) return;
+
+  input.addEventListener("change", () => {
+    const file = input.files[0];
+
+    if (!file) return;
+
+    const success =
+      createImagePreview(
+        file,
+        previewBox,
+        previewImage,
+        fileName
+      );
+
+    if (!success) {
+      input.value = "";
+      return;
+    }
 
     showToast(
-      "Please upload an OTC chart first.",
-      "error"
+      "OTC Chart Ready",
+      "Starting OTC analysis...",
+      "success"
     );
 
-    return;
+    startAnalysis({
+      type: "otc",
+      input,
 
-  }
+      progressBox:
+        $("#otcAnalysisProgress"),
 
+      progressFill:
+        $("#otcProgressFill"),
 
-  const timeframe =
-    otcTimeframe?.value?.trim() ||
-    "5m";
+      percentElement:
+        $("#otcAnalysisPercent"),
 
+      steps:
+        $$("#otcAnalysisSteps .analysis-step"),
 
-  setLoading(
-    otcAnalyzeBtn,
-    otcLoading,
-    true,
-    "Analyzing OTC chart..."
-  );
+      resultBox:
+        $("#otcResultBox"),
 
+      signalElement:
+        $("#otcSignal"),
 
-  if (otcResult) {
-    otcResult.hidden = true;
-  }
+      signalText:
+        $("#otcSignalText"),
 
+      resultTime:
+        $("#otcResultTime"),
 
-  try {
+      confidence:
+        $("#otcConfidence"),
 
-    const data = await apiRequest(
-      "/api/analyze",
-      {
-        method: "POST",
+      confidenceFill:
+        $("#otcConfidenceFill"),
 
-        body: JSON.stringify({
-          type: "otc",
-          timeframe,
-          image: otcImageBase64
-        })
-      }
-    );
+      trend:
+        $("#otcTrend"),
 
+      pattern:
+        $("#otcPattern"),
 
-    renderSignalResult(
-      data,
-      {
-        result: otcResult,
-        direction: otcDirection,
-        confidence: otcConfidence,
-        reason: otcReason,
-        votes: otcVotes
-      }
-    );
-
-
-  } catch (error) {
-
-    console.error(
-      "OTC analysis error:",
-      error
-    );
-
-
-    showToast(
-      error.message ||
-      "Unable to analyze the OTC chart.",
-      "error"
-    );
-
-  } finally {
-
-    setLoading(
-      otcAnalyzeBtn,
-      otcLoading,
-      false,
-      "🧪 Analyze OTC Market"
-    );
-
-  }
-
-}
-
-
-/* =========================================================
-   API REQUEST
-   ========================================================= */
-
-async function apiRequest(endpoint, options = {}) {
-
-  const url =
-    `${API_BASE}${endpoint}`;
-
-
-  const headers = {
-    "Content-Type": "application/json",
-    ...(options.headers || {})
-  };
-
-
-  const response = await fetch(
-    url,
-    {
-      ...options,
-      headers
-    }
-  );
-
-
-  let data = null;
-
-
-  try {
-
-    data = await response.json();
-
-  } catch {
-
-    data = null;
-
-  }
-
-
-  if (!response.ok) {
-
-    const message =
-      data?.error ||
-      data?.message ||
-      `Request failed with status ${response.status}.`;
-
-
-    throw new Error(message);
-
-  }
-
-
-  return data || {};
-
-}
-
-
-/* =========================================================
-   LOADING STATE
-   ========================================================= */
-
-function setLoading(
-  button,
-  loadingElement,
-  isLoading,
-  buttonText
-) {
-
-  if (button) {
-
-    button.disabled = isLoading;
-
-    if (!button.dataset.originalText) {
-
-      button.dataset.originalText =
-        button.textContent;
-
-    }
-
-
-    button.textContent =
-      isLoading
-        ? "Please wait..."
-        : buttonText ||
-          button.dataset.originalText;
-
-  }
-
-
-  if (loadingElement) {
-
-    loadingElement.hidden =
-      !isLoading;
-
-  }
-
-}
-
-
-/* =========================================================
-   RESULT RENDERING
-   ========================================================= */
-
-function renderSignalResult(
-  data,
-  elements
-) {
-
-  const normalized =
-    normalizeSignalData(data);
-
-
-  if (elements.direction) {
-
-    elements.direction.textContent =
-      normalized.direction;
-
-
-    elements.direction.classList.remove(
-      "up",
-      "down",
-      "neutral"
-    );
-
-
-    if (
-      normalized.direction === "UP"
-    ) {
-
-      elements.direction.classList.add(
-        "up"
-      );
-
-    } else if (
-      normalized.direction === "DOWN"
-    ) {
-
-      elements.direction.classList.add(
-        "down"
-      );
-
-    } else {
-
-      elements.direction.classList.add(
-        "neutral"
-      );
-
-    }
-
-  }
-
-
-  if (elements.confidence) {
-
-    elements.confidence.textContent =
-      `${normalized.confidence}%`;
-
-  }
-
-
-  if (elements.reason) {
-
-    elements.reason.textContent =
-      normalized.reason ||
-      "No additional explanation was provided.";
-
-  }
-
-
-  if (elements.votes) {
-
-    elements.votes.innerHTML =
-      buildVotesHTML(
-        normalized.votes
-      );
-
-  }
-
-
-  if (elements.result) {
-
-    elements.result.hidden = false;
-
-    elements.result.scrollIntoView({
-      behavior: "smooth",
-      block: "nearest"
+      momentum:
+        $("#otcMomentum")
     });
+  });
 
+  if (removeButton) {
+    removeButton.addEventListener(
+      "click",
+      () => {
+        resetAnalysis({
+          input,
+          previewBox,
+          previewImage,
+          fileName,
+
+          progressBox:
+            $("#otcAnalysisProgress"),
+
+          resultBox:
+            $("#otcResultBox")
+        });
+      }
+    );
   }
-
 }
 
+/* =========================================================
+   ANALYSIS ENGINE
+========================================================= */
+
+function startAnalysis(options) {
+  const {
+    input,
+    progressBox,
+    progressFill,
+    percentElement,
+    steps,
+    resultBox
+  } = options;
+
+  if (!progressBox || !resultBox) return;
+
+  resultBox.classList.add("hidden");
+
+  progressBox.classList.remove("hidden");
+
+  if (progressFill) {
+    progressFill.style.width = "0%";
+  }
+
+  if (percentElement) {
+    percentElement.textContent = "0%";
+  }
+
+  steps.forEach((step) => {
+    step.classList.remove("active");
+    step.classList.remove("done");
+
+    const icon =
+      step.querySelector("span");
+
+    if (icon) {
+      icon.textContent = "○";
+    }
+  });
+
+  if (input) {
+    input.disabled = true;
+  }
+
+  if (engineStatus) {
+    engineStatus.textContent =
+      "Analyzing...";
+  }
+
+  const startTime =
+    performance.now();
+
+  let currentStep = -1;
+
+  const stepInterval =
+    APP.analysisDuration /
+    Math.max(steps.length, 1);
+
+  const progressInterval = 100;
+
+  let elapsed = 0;
+
+  const progressTimer =
+    window.setInterval(() => {
+      elapsed += progressInterval;
+
+      const percent =
+        Math.min(
+          100,
+          Math.round(
+            (elapsed /
+              APP.analysisDuration) *
+              100
+          )
+        );
+
+      if (progressFill) {
+        progressFill.style.width =
+          `${percent}%`;
+      }
+
+      if (percentElement) {
+        percentElement.textContent =
+          `${percent}%`;
+      }
+
+      const newStep =
+        Math.min(
+          steps.length - 1,
+          Math.floor(
+            elapsed / stepInterval
+          )
+        );
+
+      if (
+        newStep !== currentStep &&
+        newStep >= 0
+      ) {
+        if (currentStep >= 0) {
+          steps[currentStep]
+            .classList.remove(
+              "active"
+            );
+
+          steps[currentStep]
+            .classList.add("done");
+
+          const previousIcon =
+            steps[currentStep]
+              .querySelector("span");
+
+          if (previousIcon) {
+            previousIcon.textContent =
+              "✓";
+          }
+        }
+
+        currentStep = newStep;
+
+        steps[currentStep]
+          .classList.add("active");
+
+        const activeIcon =
+          steps[currentStep]
+            .querySelector("span");
+
+        if (activeIcon) {
+          activeIcon.textContent =
+            "◉";
+        }
+      }
+
+      if (
+        elapsed >=
+        APP.analysisDuration
+      ) {
+        window.clearInterval(
+          progressTimer
+        );
+
+        finishAnalysis(
+          options,
+          startTime
+        );
+      }
+    }, progressInterval);
+}
 
 /* =========================================================
-   NORMALIZE API DATA
-   ========================================================= */
+   FINISH ANALYSIS
+========================================================= */
 
-function normalizeSignalData(data) {
+function finishAnalysis(
+  options,
+  startTime
+) {
+  const {
+    input,
+    progressBox,
+    progressFill,
+    percentElement,
+    steps,
+    resultBox,
+    signalElement,
+    signalText,
+    resultTime,
+    confidence,
+    confidenceFill,
+    trend,
+    pattern,
+    momentum
+  } = options;
 
-  let direction =
-    data?.direction ||
-    data?.signal ||
-    data?.finalSignal ||
-    data?.prediction ||
-    "WAITING";
-
-
-  direction =
-    String(direction)
-      .toUpperCase()
-      .trim();
-
-
-  if (
-    direction.includes("BUY") ||
-    direction.includes("UP") ||
-    direction.includes("CALL")
-  ) {
-
-    direction = "UP";
-
-  } else if (
-    direction.includes("SELL") ||
-    direction.includes("DOWN") ||
-    direction.includes("PUT")
-  ) {
-
-    direction = "DOWN";
-
-  } else if (
-    direction.includes("HOLD") ||
-    direction.includes("WAIT") ||
-    direction.includes("NEUTRAL")
-  ) {
-
-    direction = "NEUTRAL";
-
-  } else {
-
-    direction = "WAITING";
-
+  if (progressFill) {
+    progressFill.style.width = "100%";
   }
 
+  if (percentElement) {
+    percentElement.textContent =
+      "100%";
+  }
 
-  let confidence =
-    Number(
-      data?.confidence ??
-      data?.confidenceScore ??
-      data?.percentage ??
-      0
+  steps.forEach((step) => {
+    step.classList.remove("active");
+    step.classList.add("done");
+
+    const icon =
+      step.querySelector("span");
+
+    if (icon) {
+      icon.textContent = "✓";
+    }
+  });
+
+  window.setTimeout(() => {
+    progressBox.classList.add(
+      "hidden"
     );
 
+    /*
+      DEMO RESULT
 
-  if (
-    Number.isNaN(confidence) ||
-    !Number.isFinite(confidence)
-  ) {
+      This is not a real market prediction.
+      It will later be replaced with API data.
+    */
 
-    confidence = 0;
+    const result =
+      generateDemoAnalysis();
 
-  }
+    applySignal(
+      signalElement,
+      signalText,
+      result.direction
+    );
 
+    if (confidence) {
+      confidence.textContent =
+        `${result.confidence}%`;
+    }
 
-  confidence =
-    Math.max(
-      0,
-      Math.min(
-        100,
-        Math.round(confidence)
+    if (confidenceFill) {
+      confidenceFill.style.width =
+        `${result.confidence}%`;
+    }
+
+    if (trend) {
+      trend.textContent =
+        result.trend;
+    }
+
+    if (pattern) {
+      pattern.textContent =
+        result.pattern;
+    }
+
+    if (momentum) {
+      momentum.textContent =
+        result.momentum;
+    }
+
+    const duration =
+      (
+        (performance.now() -
+          startTime) /
+        1000
+      ).toFixed(1);
+
+    if (resultTime) {
+      resultTime.textContent =
+        `${duration}s`;
+    }
+
+    resultBox.classList.remove(
+      "hidden"
+    );
+
+    if (input) {
+      input.disabled = false;
+    }
+
+    if (engineStatus) {
+      engineStatus.textContent =
+        "Ready";
+    }
+
+    showToast(
+      "Analysis Complete",
+      `${result.direction} signal generated.`,
+      "success"
+    );
+  }, 350);
+}
+
+/* =========================================================
+   DEMO ANALYSIS RESULT
+========================================================= */
+
+function generateDemoAnalysis() {
+  const directions = [
+    "UP",
+    "DOWN"
+  ];
+
+  const patterns = [
+    "Breakout",
+    "Engulfing",
+    "Support Bounce",
+    "Resistance Reject",
+    "Trend Continuation",
+    "Consolidation"
+  ];
+
+  const trends = [
+    "Bullish",
+    "Bearish",
+    "Sideways"
+  ];
+
+  const momentumList = [
+    "Strong",
+    "Moderate",
+    "Weak"
+  ];
+
+  const direction =
+    directions[
+      Math.floor(
+        Math.random() *
+        directions.length
       )
+    ];
+
+  const confidence =
+    Math.floor(
+      72 +
+      Math.random() * 24
     );
-
-
-  const reason =
-    data?.reason ||
-    data?.analysis ||
-    data?.explanation ||
-    data?.summary ||
-    "";
-
-
-  const votes =
-    normalizeVotes(
-      data?.votes ||
-      data?.providers ||
-      data?.models ||
-      []
-    );
-
 
   return {
     direction,
     confidence,
-    reason,
-    votes
-  };
 
+    trend:
+      trends[
+        Math.floor(
+          Math.random() *
+          trends.length
+        )
+      ],
+
+    pattern:
+      patterns[
+        Math.floor(
+          Math.random() *
+          patterns.length
+        )
+      ],
+
+    momentum:
+      momentumList[
+        Math.floor(
+          Math.random() *
+          momentumList.length
+        )
+      ]
+  };
 }
 
+/* =========================================================
+   APPLY UP / DOWN SIGNAL
+========================================================= */
+
+function applySignal(
+  signalElement,
+  signalText,
+  direction
+) {
+  if (
+    !signalElement ||
+    !signalText
+  ) {
+    return;
+  }
+
+  signalElement.classList.remove(
+    "down"
+  );
+
+  const icon =
+    signalElement.querySelector(
+      ".signal-icon"
+    );
+
+  if (direction === "DOWN") {
+    signalElement.classList.add(
+      "down"
+    );
+
+    signalText.textContent =
+      "DOWN";
+
+    if (icon) {
+      icon.textContent = "↓";
+    }
+  } else {
+    signalText.textContent =
+      "UP";
+
+    if (icon) {
+      icon.textContent = "↑";
+    }
+  }
+
+  signalElement.style.animation =
+    "none";
+
+  void signalElement.offsetWidth;
+
+  signalElement.style.animation = "";
+}
 
 /* =========================================================
-   NORMALIZE VOTES
-   ========================================================= */
+   RESET ANALYSIS
+========================================================= */
 
-function normalizeVotes(votes) {
+function resetAnalysis(options) {
+  const {
+    input,
+    previewBox,
+    previewImage,
+    fileName,
+    progressBox,
+    resultBox
+  } = options;
 
-  if (!votes) {
-    return [];
+  if (input) {
+    input.value = "";
+    input.disabled = false;
   }
 
-
-  if (!Array.isArray(votes)) {
-
-    if (
-      typeof votes === "object"
-    ) {
-
-      return Object.entries(votes)
-        .map(([name, value]) => ({
-          name,
-          signal:
-            extractDirection(value),
-          confidence:
-            extractConfidence(value)
-        }));
-
-    }
-
-    return [];
-
+  if (previewImage) {
+    previewImage.src = "";
   }
 
+  if (fileName) {
+    fileName.textContent =
+      "No image selected";
+  }
 
-  return votes.map(
-    (vote, index) => {
+  if (previewBox) {
+    previewBox.classList.add(
+      "hidden"
+    );
+  }
 
-      if (
-        typeof vote === "string"
-      ) {
+  if (progressBox) {
+    progressBox.classList.add(
+      "hidden"
+    );
+  }
 
-        return {
-          name: `AI ${index + 1}`,
-          signal:
-            extractDirection(vote),
-          confidence: null
-        };
+  if (resultBox) {
+    resultBox.classList.add(
+      "hidden"
+    );
+  }
 
+  if (engineStatus) {
+    engineStatus.textContent =
+      "Ready";
+  }
+}
+
+/* =========================================================
+   FUTURE SIGNALS
+========================================================= */
+
+function initializeFutureSignals() {
+  const marketSelect =
+    $("#marketSelect");
+
+  const generateButton =
+    $("#generateSignalsButton");
+
+  const loadingBox =
+    $("#signalLoading");
+
+  const signalsContainer =
+    $("#signalsContainer");
+
+  const signalList =
+    $("#signalList");
+
+  const selectedMarketName =
+    $("#selectedMarketName");
+
+  if (
+    !marketSelect ||
+    !generateButton
+  ) {
+    return;
+  }
+
+  generateButton.addEventListener(
+    "click",
+    () => {
+      const market =
+        marketSelect.value;
+
+      if (!market) {
+        showToast(
+          "Select Market",
+          "Please select a market first.",
+          "error"
+        );
+
+        marketSelect.focus();
+
+        return;
       }
 
+      if (signalsContainer) {
+        signalsContainer.classList.add(
+          "hidden"
+        );
+      }
 
-      return {
-        name:
-          vote?.name ||
-          vote?.provider ||
-          vote?.model ||
-          `AI ${index + 1}`,
+      if (loadingBox) {
+        loadingBox.classList.remove(
+          "hidden"
+        );
+      }
 
-        signal:
-          extractDirection(
-            vote?.signal ||
-            vote?.direction ||
-            vote?.prediction ||
-            vote?.result
-          ),
+      generateButton.disabled = true;
+      generateButton.style.opacity =
+        "0.55";
 
-        confidence:
-          extractConfidence(
-            vote
-          )
-      };
+      window.setTimeout(() => {
+        const count =
+          Number(
+            CONFIG.futureSignals?.count
+          ) || 10;
 
+        const signals =
+          generateFutureSignals(
+            market,
+            count
+          );
+
+        if (signalList) {
+          signalList.innerHTML = "";
+        }
+
+        if (selectedMarketName) {
+          selectedMarketName.textContent =
+            `${market} Signals`;
+        }
+
+        signals.forEach(
+          (signal, index) => {
+            createSignalCard(
+              signal,
+              index,
+              signalList
+            );
+          }
+        );
+
+        if (loadingBox) {
+          loadingBox.classList.add(
+            "hidden"
+          );
+        }
+
+        if (signalsContainer) {
+          signalsContainer.classList.remove(
+            "hidden"
+          );
+        }
+
+        generateButton.disabled =
+          false;
+
+        generateButton.style.opacity =
+          "1";
+
+        showToast(
+          "Signals Ready",
+          `${count} signal ideas generated.`,
+          "success"
+        );
+      }, 1800);
     }
   );
-
 }
-
 
 /* =========================================================
-   EXTRACT DIRECTION
-   ========================================================= */
+   GENERATE FUTURE SIGNALS
+========================================================= */
 
-function extractDirection(value) {
+function generateFutureSignals(
+  market,
+  amount
+) {
+  const result = [];
 
-  if (
-    value &&
-    typeof value === "object"
+  const now = new Date();
+
+  for (
+    let i = 0;
+    i < amount;
+    i++
   ) {
+    const direction =
+      Math.random() > 0.5
+        ? "UP"
+        : "DOWN";
 
-    value =
-      value.signal ||
-      value.direction ||
-      value.prediction ||
-      value.result ||
-      "";
+    const confidence =
+      Math.floor(
+        70 +
+        Math.random() * 27
+      );
 
+    const signalTime =
+      new Date(
+        now.getTime() +
+        (i + 1) *
+          2 *
+          60 *
+          1000
+      );
+
+    result.push({
+      market,
+      direction,
+      confidence,
+      time:
+        formatTime(signalTime)
+    });
   }
 
-
-  const text =
-    String(value || "")
-      .toUpperCase()
-      .trim();
-
-
-  if (
-    text.includes("UP") ||
-    text.includes("BUY") ||
-    text.includes("CALL")
-  ) {
-
-    return "UP";
-
-  }
-
-
-  if (
-    text.includes("DOWN") ||
-    text.includes("SELL") ||
-    text.includes("PUT")
-  ) {
-
-    return "DOWN";
-
-  }
-
-
-  if (
-    text.includes("NEUTRAL") ||
-    text.includes("HOLD") ||
-    text.includes("WAIT")
-  ) {
-
-    return "NEUTRAL";
-
-  }
-
-
-  return "UNKNOWN";
-
+  return result;
 }
-
 
 /* =========================================================
-   EXTRACT CONFIDENCE
-   ========================================================= */
+   CREATE SIGNAL CARD
+========================================================= */
 
-function extractConfidence(value) {
+function createSignalCard(
+  signal,
+  index,
+  container
+) {
+  if (!container) return;
 
-  if (
-    value === null ||
-    value === undefined
-  ) {
+  const card =
+    document.createElement("div");
 
-    return null;
+  card.className =
+    "future-signal-card";
 
-  }
-
-
-  if (
-    typeof value === "number"
-  ) {
-
-    return normalizeConfidence(
-      value
-    );
-
-  }
-
-
-  if (
-    typeof value === "object"
-  ) {
-
-    return normalizeConfidence(
-      value.confidence ??
-      value.confidenceScore ??
-      value.percentage
-    );
-
-  }
-
-
-  return normalizeConfidence(
-    value
-  );
-
-}
-
-
-function normalizeConfidence(value) {
+  card.style.animationDelay =
+    `${index * 80}ms`;
 
   const number =
-    Number(
-      String(value)
-        .replace("%", "")
-        .trim()
-    );
+    String(index + 1)
+      .padStart(2, "0");
 
+  const directionClass =
+    signal.direction === "UP"
+      ? "up"
+      : "down";
 
-  if (
-    Number.isNaN(number) ||
-    !Number.isFinite(number)
-  ) {
+  card.innerHTML = `
+    <div class="signal-number">
+      ${number}
+    </div>
 
-    return null;
+    <div class="future-signal-market">
+      <strong>
+        ${escapeHTML(signal.market)}
+      </strong>
 
-  }
+      <small>
+        Confidence ${signal.confidence}%
+      </small>
+    </div>
 
+    <div class="signal-time">
+      ${escapeHTML(signal.time)}
+    </div>
 
-  return Math.max(
-    0,
-    Math.min(
-      100,
-      Math.round(number)
-    )
-  );
+    <div class="direction ${directionClass}">
+      ${
+        signal.direction === "UP"
+          ? "↑ UP"
+          : "↓ DOWN"
+      }
+    </div>
+  `;
 
+  container.appendChild(card);
 }
-
 
 /* =========================================================
-   BUILD AI VOTES HTML
-   ========================================================= */
+   TIME FORMAT
+========================================================= */
 
-function buildVotesHTML(votes) {
-
-  if (
-    !Array.isArray(votes) ||
-    votes.length === 0
-  ) {
-
-    return "";
-
-  }
-
-
-  return votes
-    .map((vote) => {
-
-      const signal =
-        vote.signal ||
-        "UNKNOWN";
-
-
-      const confidence =
-        vote.confidence !== null &&
-        vote.confidence !== undefined
-          ? ` • ${vote.confidence}%`
-          : "";
-
-
-      return `
-        <div class="ai-vote">
-          <strong>${escapeHTML(vote.name)}</strong>
-          <span>${escapeHTML(signal)}${confidence}</span>
-        </div>
-      `;
-
-    })
-    .join("");
-
+function formatTime(date) {
+  return date.toLocaleTimeString(
+    [],
+    {
+      hour: "2-digit",
+      minute: "2-digit"
+    }
+  );
 }
-
 
 /* =========================================================
    HTML ESCAPE
-   ========================================================= */
+========================================================= */
 
 function escapeHTML(value) {
-
-  return String(value ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
-
+  return String(value)
+    .replaceAll(
+      "&",
+      "&amp;"
+    )
+    .replaceAll(
+      "<",
+      "&lt;"
+    )
+    .replaceAll(
+      ">",
+      "&gt;"
+    )
+    .replaceAll(
+      '"',
+      "&quot;"
+    )
+    .replaceAll(
+      "'",
+      "&#039;"
+    );
 }
-
 
 /* =========================================================
    TOAST
-   ========================================================= */
+========================================================= */
 
-function showToast(
-  message,
-  type = "info"
-) {
-
-  let container =
-    document.querySelector(
-      ".toast-container"
+function initializeToast() {
+  if (toastClose) {
+    toastClose.addEventListener(
+      "click",
+      hideToast
     );
-
-
-  if (!container) {
-
-    container =
-      document.createElement("div");
-
-    container.className =
-      "toast-container";
-
-
-    Object.assign(
-      container.style,
-      {
-        position: "fixed",
-        left: "50%",
-        bottom: "25px",
-        transform: "translateX(-50%)",
-        zIndex: "3000",
-        display: "flex",
-        flexDirection: "column",
-        gap: "9px",
-        width: "min(420px, calc(100% - 30px))",
-        pointerEvents: "none"
-      }
-    );
-
-
-    document.body.appendChild(
-      container
-    );
-
   }
-
-
-  const toast =
-    document.createElement("div");
-
-
-  toast.className =
-    `ai-toast ${type}`;
-
-
-  const icon =
-    type === "success"
-      ? "✓"
-      : type === "error"
-        ? "!"
-        : "i";
-
-
-  toast.innerHTML = `
-    <span class="toast-icon">${icon}</span>
-    <span>${escapeHTML(message)}</span>
-  `;
-
-
-  Object.assign(
-    toast.style,
-    {
-      display: "flex",
-      alignItems: "center",
-      gap: "10px",
-      padding: "13px 15px",
-      border: "1px solid rgba(255,255,255,.1)",
-      borderRadius: "14px",
-      color: "#fff",
-      background: "rgba(14,19,34,.96)",
-      boxShadow: "0 15px 40px rgba(0,0,0,.35)",
-      fontSize: "12px",
-      fontWeight: "700",
-      pointerEvents: "auto",
-      animation: "toastIn .3s ease both"
-    }
-  );
-
-
-  container.appendChild(toast);
-
-
-  setTimeout(() => {
-
-    toast.style.opacity = "0";
-    toast.style.transform =
-      "translateY(8px)";
-
-
-    toast.style.transition =
-      "opacity .25s ease, transform .25s ease";
-
-
-    setTimeout(() => {
-
-      toast.remove();
-
-    }, 300);
-
-  }, 3500);
-
 }
 
+function showToast(
+  title,
+  message,
+  type = "success"
+) {
+  if (!toast) return;
 
-/* =========================================================
-   ADD TOAST ANIMATION
-   ========================================================= */
-
-(function addToastAnimation() {
-
-  if (
-    document.getElementById(
-      "ai-analyses-toast-style"
-    )
-  ) {
-
-    return;
-
+  if (toastTitle) {
+    toastTitle.textContent =
+      title;
   }
 
+  if (toastMessage) {
+    toastMessage.textContent =
+      message;
+  }
 
-  const style =
-    document.createElement("style");
-
-
-  style.id =
-    "ai-analyses-toast-style";
-
-
-  style.textContent = `
-    @keyframes toastIn {
-      from {
-        opacity: 0;
-        transform: translateY(10px);
-      }
-      to {
-        opacity: 1;
-        transform: translateY(0);
-      }
-    }
-
-    .drag-active {
-      border-color: rgba(0,217,255,.8) !important;
-      background: rgba(0,217,255,.08) !important;
-      transform: scale(1.01);
-    }
-
-    .ai-toast .toast-icon {
-      width: 24px;
-      height: 24px;
-      min-width: 24px;
-      display: grid;
-      place-items: center;
-      border-radius: 8px;
-      background: rgba(108,99,255,.18);
-      color: #8c7cff;
-      font-weight: 900;
-    }
-
-    .ai-toast.success .toast-icon {
-      background: rgba(32,229,154,.12);
-      color: #20e59a;
-    }
-
-    .ai-toast.error .toast-icon {
-      background: rgba(255,85,119,.12);
-      color: #ff5577;
-    }
-  `;
-
-
-  document.head.appendChild(style);
-
-})();
-
-
-/* =========================================================
-   ONLINE / OFFLINE STATUS
-   ========================================================= */
-
-window.addEventListener(
-  "online",
-  () => {
-
-    showToast(
-      "Internet connection restored.",
-      "success"
+  const icon =
+    toast.querySelector(
+      ".toast-icon"
     );
 
+  if (icon) {
+    if (type === "error") {
+      icon.textContent = "×";
+
+      icon.style.color =
+        "var(--red)";
+
+      icon.style.background =
+        "rgba(255,64,92,0.08)";
+    } else {
+      icon.textContent = "✓";
+
+      icon.style.color =
+        "var(--green)";
+
+      icon.style.background =
+        "rgba(0,230,118,0.08)";
+    }
+  }
+
+  toast.classList.add("show");
+
+  window.clearTimeout(
+    window.__toastTimer
+  );
+
+  const duration =
+    Number(
+      CONFIG.ui?.toastDuration
+    ) || 3500;
+
+  window.__toastTimer =
+    window.setTimeout(
+      hideToast,
+      duration
+    );
+}
+
+function hideToast() {
+  if (!toast) return;
+
+  toast.classList.remove("show");
+}
+
+/* =========================================================
+   PREVENT DRAGGING IMAGES
+========================================================= */
+
+document.addEventListener(
+  "dragstart",
+  (event) => {
+    if (
+      event.target &&
+      event.target.tagName === "IMG"
+    ) {
+      event.preventDefault();
+    }
   }
 );
 
+/* =========================================================
+   HANDLE PAGE VISIBILITY
+========================================================= */
 
-window.addEventListener(
-  "offline",
+document.addEventListener(
+  "visibilitychange",
   () => {
+    if (!engineStatus) return;
 
-    showToast(
-      "You are currently offline.",
-      "error"
-    );
-
+    if (document.hidden) {
+      engineStatus.textContent =
+        "Paused";
+    } else {
+      engineStatus.textContent =
+        "Ready";
+    }
   }
 );
 
-
 /* =========================================================
-   EXPORT FOR DEBUGGING
-   ========================================================= */
+   CONSOLE
+========================================================= */
 
-window.AIAnalyses = {
+console.log(
+  "%c AI Market Analyzer ",
+  "background:#071321;color:#00e5ff;font-weight:bold;padding:8px;"
+);
 
-  showSection,
-
-  generateFutureSignal,
-
-  analyzeRealMarket,
-
-  analyzeOTCMarket,
-
-  clearImage,
-
-  showToast
-
-};
+console.log(
+  "Frontend initialized successfully."
+);
